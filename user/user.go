@@ -1,14 +1,17 @@
 package user
 
-import "github.com/convictional/template-embed-example/email"
+import (
+	"github.com/convictional/template-embed-example/email"
+	"os"
+)
 
 type User struct {
-	Name string
 	Email string
 }
 
 func (u *User) ResetPassword() {
-	err := email.SendForgotPasswordEmail(u.Email)
+	emailSender := email.Sender{Writer: os.Stdout}
+	err := emailSender.SendForgotPasswordEmail(u.Email)
 	if err != nil {
 		panic(err)
 	}

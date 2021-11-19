@@ -1,8 +1,19 @@
 package email
 
-import "testing"
+import (
+	"io/ioutil"
+	"testing"
+)
+
+func BenchmarkSendForgotPasswordEmailTemplates(b *testing.B) {
+	benchSender := Sender{ioutil.Discard}
+	for n:=0;n<b.N;n++ {
+		_ = benchSender.SendForgotPasswordEmail("test@email.com")
+	}
+}
 
 func TestSendForgotPasswordEmail(t *testing.T) {
+	testSender := Sender{ioutil.Discard}
 	type args struct {
 		address string
 	}
@@ -19,7 +30,7 @@ func TestSendForgotPasswordEmail(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := SendForgotPasswordEmail(tt.args.address); (err != nil) != tt.wantErr {
+			if err := testSender.SendForgotPasswordEmail(tt.args.address); (err != nil) != tt.wantErr {
 				t.Errorf("SendForgotPasswordEmail() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
