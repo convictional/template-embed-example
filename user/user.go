@@ -11,7 +11,7 @@ type User struct {
 
 func (u *User) ResetPassword() {
 	emailSender := email.Sender{Writer: os.Stdout}
-	err := emailSender.SendForgotPasswordEmail(u.Email)
+	err := emailSender.SendForgotPasswordEmailInit(u.Email)
 	if err != nil {
 		panic(err)
 	}
