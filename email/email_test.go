@@ -5,6 +5,13 @@ import (
 	"testing"
 )
 
+func BenchmarkSendForgotPasswordEmailTemplatesInit(b *testing.B) {
+	benchSender := Sender{ioutil.Discard}
+	for n:=0;n<b.N;n++ {
+		_ = benchSender.SendForgotPasswordEmailInit("test@email.com")
+	}
+}
+
 func BenchmarkSendForgotPasswordEmailTemplates(b *testing.B) {
 	benchSender := Sender{ioutil.Discard}
 	for n:=0;n<b.N;n++ {
