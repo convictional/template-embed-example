@@ -8,15 +8,17 @@ You will be able to find the code for this post [here](https://github.com/convic
 First let us put together a standard usage of templating in go. This is what most projects that use templating are going to look at, and what our first implementation of emailing looked like:
 
 ```go  
-// Read in template (in this example we are sending a forgot password email)  
-passwordTemplate, err := template.ParseFiles(templateLayout, templateForgotPassword)  
-if err != nil {  
- panic(err)}  
-// Execute template with data and store in a bytes.Buffer for use in email  
-var body bytes.Buffer  
-err = passwordTemplate.ExecuteTemplate(&body, "layout", &ForgotPasswordData{Link: "https://httpbin.org"})  
-if err != nil {  
- panic(err)}  
+// Read in template (in this example we are sending a forgot password email)
+passwordTemplate, err := template.ParseFiles(fmt.Sprintf("%s/%s", basepath, templateLayout), fmt.Sprintf("%s/%s", basepath, templateForgotPassword))
+if err != nil {
+    panic(err)
+}
+// Execute template with data and store in a bytes.Buffer for use in email
+var body bytes.Buffer
+err = passwordTemplate.ExecuteTemplate(&body, "layout", &ForgotPasswordData{Link: "https://httpbin.org"})
+if err != nil {
+    panic(err)
+}
 //[...] Send email with the body that was generated from passwordTemplate.ExecuteTemplate  
 ```  
 
@@ -27,27 +29,35 @@ This works well and will correctly template in the values we need - but there ar
 We can solve the first problem easily by utilizing a lesser-know feature of Go:  `init()`. `init()` is a function that automatically runs when a package is imported for the first time. What we can do with this function is initialize all of our templates when the email package is imported for the first time, and simply execute those packages when we need to put data in them.
 
 First we need to define the template at the top of the email.go file
-```go  
-//...  
-var passwordTemplateInit *template.Template  
-//...  
-```  
+```go
+//...
+var passwordTemplateInit *template.Template
+//...
+```
 
 Next we create an `init()` file that parses the template files and assigns that to the variable we just created
-```go  
+```go
 //...  
-func init() {  
- passwordTemplateInit = template.Must(template.ParseFiles(fmt.Sprintf("%s/%s", basepath, templateLayout), fmt.Sprintf("%s/%s", basepath, templateForgotPassword)))}  
+func init() {
+    passwordTemplateInit = template.Must(template.ParseFiles(fmt.Sprintf("%s/%s", basepath, templateLayout), fmt.Sprintf("%s/%s", basepath, templateForgotPassword)))
+}
 //...  
 ```  
 
-And finally we will modify our `SendForgotPasswordEmail` funciton to use this new global variable rather than doing the parsing on it's own
+And finally we will modify our `SendForgotPasswordEmail` function to use this new global variable rather than doing the parsing on its own
 
-```go  
+```go
 //...  
 // Here I created a new function rather than modifying the old one so that we can compare visually and benchmark them together  
-func (s Sender) SendForgotPasswordEmailInit(address string) error {  
- // Execute template with data and store in a bytes.Buffer for use in email var body bytes.Buffer err := passwordTemplateInit.ExecuteTemplate(&body, "layout", &ForgotPasswordData{Link: "https://httpbin.org"}) if err != nil { panic(err) } return s.sendEmail(address, "Reset Password", body.String())}  
+func (s Sender) SendForgotPasswordEmailInit(address string) error {
+    // Execute template with data and store in a bytes.Buffer for use in email
+    var body bytes.Buffer
+    err := passwordTemplateInit.ExecuteTemplate(&body, "layout", &ForgotPasswordData{Link: "https://httpbin.org"})
+    if err != nil {
+        panic(err)
+    }
+    return s.sendEmail(address, "Reset Password", body.String())
+} 
 //...  
 ```  
 
@@ -56,10 +66,10 @@ You can immediately see that the function is much simpler now that we have moved
 ```sh  
 # Lower ns/op is better  
 go test -bench=.  
-BenchmarkSendForgotPasswordEmailTemplatesInit-16          509301              2092 ns/op  
-BenchmarkSendForgotPasswordEmailTemplates-16               12140             97922 ns/op  
-PASS  
-ok      github.com/convictional/template-embed-example/email    3.442s  
+BenchmarkSendForgotPasswordEmailTemplatesInit-16    	  507255	      2139 ns/op
+BenchmarkSendForgotPasswordEmailTemplates-16        	   12099	    101731 ns/op
+PASS
+ok  	github.com/convictional/template-embed-example/email	3.524s 
 ```  
 
 There are still a few problems with this approach however, since we are still vulnerable to a copying mistake or a deletion of a template file causing runtime errors, and we do still have to work around where in the filesystem the templates are located.
@@ -69,26 +79,38 @@ There are still a few problems with this approach however, since we are still vu
 The `go:embed` directive was introduced in version 1.16 alongside the [virtual FS proposal](https://go.googlesource.com/proposal/+/master/design/draft-iofs.md_) that was also introduced in 1.16. By attaching an absolute route to a variable with the `go:embed` directive, the go compiler will automatically load in the files located at the route into the defined variable. If a file is not found at that location, the compiler will throw an error. Since this is an absolute path, we can also remove the hacky pathing solutions we needed in order to use the email package elsewhere in the module, simplifying our code a lot.
 
 The first step to making this change is to declare some new variables:
-```go  
+```go
 //...  
-var (  
- //go:embed templates/layout.html baseLayoutFS embed.FS //go:embed templates/forgot_password.html passwordTemplateFS embed.FS passwordTemplateInitFS *template.Template)  
-//...  
+var (
+    //go:embed templates/layout.html
+    baseLayoutFS embed.FS
+    //go:embed templates/forgot_password.html
+    passwordTemplateFS embed.FS
+    passwordTemplateInitFS *template.Template
+)
+//...
 ```  
 > Note the `//go:embed` directive above `baseLayoutFS` and `passwordTemplateFS`. In this case rather than embedding the file to a string or []byte we are using the `embed.FS` type. The reason we are doing this is the `html/template` package has [native support](https://pkg.go.dev/html/template#ParseFS) for parsing `embed.FS` objects.
 
 Next we need to modify our `init()` function to handle these new variables and  ensure that they are properly set up for use
 ```go  
 func init() {  
- // We separate baseLayout from passwordTemplateInitFS due to how ParseFS works - this is a better pattern regardless baseLayout := template.Must(template.New("layout").ParseFS(baseLayoutFS, templateLayout)) passwordTemplateInitFS = template.Must(baseLayout.ParseFS(passwordTemplateFS, templateForgotPassword))}  
+    // We separate baseLayout from passwordTemplateInitFS due to how ParseFS works - this is a better pattern regardless
+    baseLayout := template.Must(template.New("layout").ParseFS(baseLayoutFS, templateLayout))
+    passwordTemplateInitFS = template.Must(baseLayout.ParseFS(passwordTemplateFS, templateForgotPassword))
+}  
 ```  
 The rest of `email.go` only needs changes to use the new variables, and we now have  compile-time guarantees that the files we need for email templating exist and are ready for use.
 
 Running a quick benchmark shows that we haven't lost any performance with this change:
 
 ```shell  
-go test -bench=.BenchmarkSendForgotPasswordEmailTemplatesInitFS-16 531337              2039 ns/opBenchmarkSendForgotPasswordEmailTemplatesInit-16 574450              2084 ns/opBenchmarkSendForgotPasswordEmailTemplates-16 10000            100133 ns/opPASS  
-ok github.com/convictional/template-embed-example/email    3.437s
+go test -bench=.
+BenchmarkSendForgotPasswordEmailTemplatesInitFS-16    	  521109	      2105 ns/op
+BenchmarkSendForgotPasswordEmailTemplatesInit-16      	  475965	      2208 ns/op
+BenchmarkSendForgotPasswordEmailTemplates-16          	   10000	    102306 ns/op
+PASS
+ok  	github.com/convictional/template-embed-example/email	3.385s
 ```  
 
 ## Production Readiness
