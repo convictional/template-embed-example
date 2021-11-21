@@ -63,7 +63,7 @@ func (s Sender) SendForgotPasswordEmailInit(address string) error {
 
 You can immediately see that the function is much simpler now that we have moved the template initialization code out of the function that actually sends the email. This is also **exceptionally** faster:
 
-```sh  
+```sh
 # Lower ns/op is better  
 go test -bench=.  
 BenchmarkSendForgotPasswordEmailTemplatesInit-16    	  507255	      2139 ns/op
@@ -104,7 +104,8 @@ The rest of `email.go` only needs changes to use the new variables, and we now h
 
 Running a quick benchmark shows that we haven't lost any performance with this change:
 
-```shell  
+```shell
+# Lower ns/op is better
 go test -bench=.
 BenchmarkSendForgotPasswordEmailTemplatesInitFS-16    	  521109	      2105 ns/op
 BenchmarkSendForgotPasswordEmailTemplatesInit-16      	  475965	      2208 ns/op
